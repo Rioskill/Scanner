@@ -6,8 +6,11 @@ import * as tls from 'node:tls'
 import { host, port, cert_key } from './config'
 import { constructHeaderString, constructRequestBuffer } from './utils'
 import { getCertificate } from './ssl'
+import { RequestParser, buildRequest } from './requestParser'
+import { ResponseParser } from './responseParser'
 
-const requestListener = function (request, response) {
+const requestListener = (request, response) => {
+    // console.log('listen')
     const parsedUrl = url.parse(request.url);
     const options = {
         host: parsedUrl.hostname,
@@ -15,16 +18,16 @@ const requestListener = function (request, response) {
     };
 
     const proxyRequest = net.connect(options, () => {
-        request.socket.on('data', (chunk) => {
-            console.log('request data')
-            console.log(chunk)
-        });
-        request.socket.on('end', (chunk) => {
-            console.log('request end')
-            console.log(chunk)
-        });
-
         const headers = constructHeaderString(request.rawHeaders);
+
+        // request.socket.on('data', (chunk) => {
+        //     console.log('request data')
+        //     console.log(chunk)
+        // });
+        // request.socket.on('end', (chunk) => {
+        //     console.log('request end')
+        //     console.log(chunk)
+        // });
 
         let p = constructRequestBuffer(request.method, parsedUrl.path, headers);
         proxyRequest.write(p);
@@ -35,6 +38,7 @@ const requestListener = function (request, response) {
 const server = http.createServer(requestListener);
 
 server.on('connect', (request, socket, head) => {
+    // console.log('connect')
     socket.on('error', () => {
         console.log('connect socket error');
     });
@@ -66,23 +70,34 @@ server.on('connect', (request, socket, head) => {
             console.log('tls socket error', e);
         });
 
-        // const requestParser = createRequestParser(tlsSocket, requestsStore, options.host, options.port, true);
-        // const responseParser = createResponseParser(proxyReq, requestsStore);
+        const sendFn = (record) => {
+            const request = buildRequest(record);
+            proxyReq.write(request);
+        }
 
-        tlsSocket.pipe(proxyReq).pipe(tlsSocket);
+        const requestParser = new RequestParser(options.host, options.port, tlsSocket, sendFn);
+        const responseParser = new ResponseParser(tlsSocket, requestParser.requests);
 
-        // tlsSocket.on('data', (chunk) => {
-        //     // requestParser.execute(chunk)
-        // });
-        // tlsSocket.on('end', () => {
-        //     requestParser.finish()
-        // });
-        // proxyReq.on('data', (chunk) => {
-        //     // responseParser.execute(chunk)
-        // });
-        // proxyReq.on('end', () => {
-        //     responseParser.finish()
-        // });
+        tlsSocket.on('data', chunk => {
+            requestParser.parser.execute(chunk);
+            // console.log(chunk.toString())
+        });
+
+        tlsSocket.on('end', () => {
+            requestParser.parser.finish();
+        });
+
+        proxyReq.on('data', chunk => {
+            responseParser.parser.execute(chunk);
+        });
+
+        proxyReq.on('end', chunk => {
+            responseParser.parser.finish();
+        })
+
+        proxyReq.pipe(tlsSocket);
+
+        // tlsSocket.pipe(proxyReq).pipe(tlsSocket);
     });
 
     proxyReq.on('error', e => {
@@ -97,3 +112,5 @@ server.on('error', e => {
 server.listen(port, host, () => {
     console.log(`Proxy server is running on http://${host}:${port}`);
 });
+
+
