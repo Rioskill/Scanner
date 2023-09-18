@@ -1,6 +1,8 @@
 import { HTTPParser } from "http-parser-js";
 import { constructHeaderObject } from "./utils";
 import { parseUrl, parseParams, HTTPServerAsyncResource, parseCookie } from "./utils";
+import { request_collection } from "./db";
+import { ObjectId } from "mongodb";
 
 export class RequestParser {
     constructor(host, port, socket, proxy_callback) {
@@ -27,11 +29,16 @@ export class RequestParser {
         const cookie = req.headers['Cookie'];
         const body = req.request_body.toString();
 
+        const record_id = new ObjectId()
+
         let record = {
+            _id: record_id,
             method: method,
             path: path,
             headers: req.headers
         }
+
+        req.record_id = record_id;
 
         if (params !== undefined) {
             record.get_params = params;
@@ -53,6 +60,8 @@ export class RequestParser {
         {
             record.post_params = parseParams(body);
         }
+
+        request_collection.insertOne(record);
 
         this.proxy_callback(record);
 

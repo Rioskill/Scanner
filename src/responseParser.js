@@ -1,5 +1,6 @@
 import { HTTPParser } from "http-parser-js";
 import { constructHeaderObject, HTTPServerAsyncResource } from "./utils";
+import { response_collection } from "./db";
 
 export class ResponseParser {
     constructor(socket, requests) {
@@ -17,14 +18,17 @@ export class ResponseParser {
         const req = this.requests.shift();
         const resp = this.responses.shift();
 
+        console.log(req)
+
         let record = {
             code: resp.code,
             message: resp.message,
             headers: resp.headers,
             body: resp.body.toString(),
+            request_id: req.record_id.toString()
         };
 
-        console.log(record);
+        response_collection.insertOne(record);
     };
 
     onHeadersComplete = (response) => {

@@ -1,0 +1,30 @@
+version: '3.7'
+
+networks:
+  scanner-network:
+    driver: bridge
+
+services:
+  scanner:
+    build: .
+    ports:
+      - "8000:8000"
+      - "8080:8080"
+    networks:
+      - scanner-network
+    depends_on:
+      - mongo
+
+  mongo:
+    image: mongo:latest
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+      MONGO_INITDB_DATABASE: scanner
+    ports:
+      - 27017:27017
+    volumes:
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - scanner-network
