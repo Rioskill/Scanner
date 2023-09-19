@@ -18,14 +18,18 @@ export class ResponseParser {
         const req = this.requests.shift();
         const resp = this.responses.shift();
 
-        console.log(req)
+        let request_id = '';
+
+        if (req && req.record_id) {
+            request_id = req.record_id.toString();
+        }
 
         let record = {
             code: resp.code,
             message: resp.message,
             headers: resp.headers,
             body: resp.body.toString(),
-            request_id: req.record_id.toString()
+            request_id: request_id
         };
 
         response_collection.insertOne(record);

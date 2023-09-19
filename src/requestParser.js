@@ -29,16 +29,16 @@ export class RequestParser {
         const cookie = req.headers['Cookie'];
         const body = req.request_body.toString();
 
-        const record_id = new ObjectId()
-
         let record = {
-            _id: record_id,
+            _id: req.record_id,
+            host: req.host,
+            port: req.port,
             method: method,
             path: path,
             headers: req.headers
         }
 
-        req.record_id = record_id;
+        console.log(record);
 
         if (params !== undefined) {
             record.get_params = params;
@@ -61,17 +61,18 @@ export class RequestParser {
             record.post_params = parseParams(body);
         }
 
+        console.log(record);
+
         request_collection.insertOne(record);
 
         this.proxy_callback(record);
-
-        // console.log(buildRequest(record));
     }
 
     onHeadersComplete = (request) => {
         const headers = constructHeaderObject(request.headers);
 
         const req = {
+            record_id: new ObjectId(),
             host: this.host,
             port: this.port,
             headers: headers,

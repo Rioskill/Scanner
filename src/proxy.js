@@ -9,11 +9,33 @@ import { getCertificate } from './ssl'
 import { RequestParser, buildRequest } from './requestParser'
 import { ResponseParser } from './responseParser'
 
-// const proxy = (proxyReq, socket) => {
-//     const requestParser = new RequestParser(options.host, options.port, socket, sendFn);
-//     const responseParser = new ResponseParser(tlsSocket, requestParser.requests);
+export const proxy = (proxyReqSocket, socket, options) => {
+    const sendFn = (record) => {
+        const request = buildRequest(record);
+        proxyReqSocket.write(request);
+    }
 
-// }
+    const requestParser = new RequestParser(options.host, options.port, socket, sendFn);
+    const responseParser = new ResponseParser(socket, requestParser.requests);
+
+    socket.on('data', chunk => {
+        requestParser.parser.execute(chunk);
+    });
+
+    socket.on('end', () => {
+        requestParser.parser.finish();
+    });
+
+    proxyReqSocket.on('data', chunk => {
+        responseParser.parser.execute(chunk);
+    });
+
+    proxyReqSocket.on('end', () => {
+        responseParser.parser.finish();
+    })
+
+    proxyReqSocket.pipe(socket);
+}
 
 const requestListener = (request, response) => {
     const parsedUrl = url.parse(request.url);
@@ -24,19 +46,40 @@ const requestListener = (request, response) => {
 
     const proxyRequest = net.connect(options, () => {
         const headers = constructHeaderString(request.rawHeaders);
+        const p = constructRequestBuffer(request.method, parsedUrl.path, headers);
 
-        // request.socket.on('data', (chunk) => {
-        //     console.log('request data')
-        //     console.log(chunk)
-        // });
-        // request.socket.on('end', (chunk) => {
-        //     console.log('request end')
-        //     console.log(chunk)
-        // });
+        const sendFn = (record) => {
+            const request = buildRequest(record);
+            proxyRequest.write(request);
+        }
 
-        let p = constructRequestBuffer(request.method, parsedUrl.path, headers);
+        const requestParser = new RequestParser(options.host, options.port, request.socket, sendFn);
+        const responseParser = new ResponseParser(request.socket, requestParser.requests);
+
+        request.socket.on('data', chunk => {
+            requestParser.parser.execute(chunk);
+        });
+    
+        request.socket.on('end', () => {
+            requestParser.parser.finish();
+        });
+    
+        proxyRequest.on('data', chunk => {
+            responseParser.parser.execute(chunk);
+        });
+    
+        proxyRequest.on('end', () => {
+            responseParser.parser.finish();
+        })
+
+        requestParser.parser.execute(p);
+        proxyRequest.pipe(request.socket);
+
         proxyRequest.write(p);
-        request.socket.pipe(proxyRequest).pipe(request.socket);
+    });
+
+    proxyRequest.on('error', e => {
+        console.log('http error', e);
     });
 };
 
@@ -74,31 +117,7 @@ server.on('connect', (request, socket, head) => {
             console.log('tls socket error', e);
         });
 
-        const sendFn = (record) => {
-            const request = buildRequest(record);
-            proxyReq.write(request);
-        }
-
-        const requestParser = new RequestParser(options.host, options.port, tlsSocket, sendFn);
-        const responseParser = new ResponseParser(tlsSocket, requestParser.requests);
-
-        tlsSocket.on('data', chunk => {
-            requestParser.parser.execute(chunk);
-        });
-
-        tlsSocket.on('end', () => {
-            requestParser.parser.finish();
-        });
-
-        proxyReq.on('data', chunk => {
-            responseParser.parser.execute(chunk);
-        });
-
-        proxyReq.on('end', chunk => {
-            responseParser.parser.finish();
-        })
-
-        proxyReq.pipe(tlsSocket);
+        proxy(proxyReq, tlsSocket, options);
     });
 
     proxyReq.on('error', e => {
@@ -110,4 +129,4 @@ server.on('error', e => {
     console.log('server error:', e);
 });
 
-export { server };
+export { server as proxyServer };
